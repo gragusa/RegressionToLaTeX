@@ -161,7 +161,10 @@ get_fixed_effects <- function(model) {
 #' @param split Logical or numeric. Should the equation be split into multiple lines? If numeric, specifies the character limit per line. Default is FALSE
 #' @param fe_notes Logical. Should fixed effects information be included in the output? Default is TRUE
 #' @param show_first_stage Logical. For IV models, should first stage equations be displayed? Default is FALSE
+#' @param output_latex Logical. Should the latex equation be output
 #' @param omit Character vector of regular expressions identifying coefficients to omit from the output. Default is NULL
+#' @param coef_name_sep Character. The (latex) separation between the coefficient and its name. Default is "\\,"
+#' @param interaction_sep Character. The (latex) separation between interactions. Default is "\\cdot"
 #'
 #' @details
 #' The function supports multiple model types and provides various formatting options:
@@ -233,7 +236,10 @@ regression_to_latex <- function(model,
                                 split = FALSE,
                                 fe_notes = TRUE,
                                 show_first_stage=FALSE,
-                                omit=NULL) {
+                                omit=NULL,
+                                output_latex=TRUE,
+                                coef_name_sep = "\\,",
+                                interaction_sep = "\\cdot") {
 
   # Get model type and properties
   model_info <- get_model_type(model)
@@ -284,13 +290,19 @@ regression_to_latex <- function(model,
     dep_var <- as.character(formula(model)[[2]])
   }
 
+  nchar_dep_var = nchar(dep_var) + ifelse(model_info$type=="probit"||model_info$type=="logit", 6, 0)
+
+
+  dep_var <- paste0("\\mathrm{", dep_var, "}")
+
   # Get variable names and process them
   var_names <- names(coefs)
+
   process_var_name <- function(name) {
     # Handle interaction terms
     if (grepl(":", name)) {
       terms <- strsplit(name, ":")[[1]]
-      return(paste(sapply(terms, process_var_name), collapse = "\\times "))
+      return(paste(sapply(terms, process_var_name), collapse = paste0(interaction_sep, " ")))
     }
 
     # Handle transformed variables
@@ -308,29 +320,34 @@ regression_to_latex <- function(model,
     return(name)
   }
   var_names <- sapply(var_names, process_var_name)
-  var_names[var_names=="(Intercept)"] <- ""
+  idxint <- var_names=="(Intercept)"
+  var_names[idxint] <- ""
+  nchar_var_names <- nchar(var_names)
+  var_names[!idxint] <- paste0("\\mathrm{", var_names[!idxint], "}")
   # Format coefficients and standard errors with smart formatting
+
   coefs_formatted <- sapply(coefs, format_number_smart, sig_digits = sig_digits)
   ses_formatted <- sapply(ses, format_number_smart, sig_digits = sig_digits)
+
+  nchar_coefs <- nchar(coefs_formatted)
 
   # Create the LaTeX equation parts
   latex_parts <- c()
   for (i in seq_along(coefs)) {
-    if (i == 1) {
-      ## Handle first terms without sign
-      term <- paste0("\\underset{(", ses_formatted[i], ")}{", coefs_formatted[i], "}")
-    } else {
-      sign <- ifelse(coefs[i] >= 0, "+", "-")
-      abs_coef <- abs(as.numeric(coefs[i]))
-      abs_coef_formatted <- format_number_smart(abs_coef, sig_digits = sig_digits)
-      term <- paste0(sign, "\\underset{(", ses_formatted[i], ")}{",
-                     abs_coef_formatted, "}", ifelse(var_names[i]!="", " \\times ", ""), var_names[i])
+    sign <- ifelse(coefs[i] >= 0, "+", "-")
+    if (i==1 && coefs[i] >= 0) {
+      sign <- ""
     }
+    abs_coef <- abs(as.numeric(coefs[i]))
+    abs_coef_formatted <- format_number_smart(abs_coef, sig_digits = sig_digits)
+    term <- paste0(sign, "\\underset{(", ses_formatted[i], ")}{",
+                   abs_coef_formatted, "}", ifelse(var_names[i]!="", coef_name_sep, ""), var_names[i])
     latex_parts <- c(latex_parts, term)
   }
 
   if(omitted) {
     latex_parts <- c(latex_parts, "+\\{\\dots\\}")
+    nchar_coefs <- c(nchar_coefs, 8)
   }
 
   # Add R² information if requested
@@ -339,11 +356,11 @@ regression_to_latex <- function(model,
   if (!is.null(r2_info)) {
     if (R2 && !is.null(r2_info$r2)) {
       r2_formatted <- format_number_smart(r2_info$r2, sig_digits = sig_digits)
-      r2_text <- paste0("\\quad R^2=", r2_formatted)
+      r2_text <- paste0(",\\quad R^2=", r2_formatted)
     }
     if (adj_R2 && !is.null(r2_info$adj_r2)) {
       adj_r2_formatted <- format_number_smart(r2_info$adj_r2, sig_digits = sig_digits)
-      r2_text <- paste0(r2_text, "\\quad \\text{Adj. }R^2=", adj_r2_formatted)
+      r2_text <- paste0(r2_text, ",\\quad \\text{Adj. }R^2=", adj_r2_formatted)
     }
   }
 
@@ -360,7 +377,7 @@ regression_to_latex <- function(model,
         ffe_parts <- c(fe_parts,
                       #paste0("\\text{FE: }",
                              #paste(effects$fixed, collapse = ", "))#
-                      paste0("[", fixed_effects, "]", collapse = " + ")
+                      paste0("[", effects$fixed, "]", collapse = " + ")
         )
       }
 
@@ -381,13 +398,22 @@ regression_to_latex <- function(model,
     }
   }
 
+  nchar_ffe_text <- nchar(ffe_text)
+  nchar_fe_text <- nchar(ffe_text)
+
   # Modify the output based on model type
   if (model_info$type == "glm") {
     if (model_info$family == "probit") {
-      dep_var <- paste0("\\Pr(", dep_var, "=1) = \\Phi\\left(")
+      if(split)
+        dep_var <- paste0("\\Pr(", dep_var, "=1) = \\Phi&\\left(")
+      else
+        dep_var <- paste0("\\Pr(", dep_var, "=1) = \\Phi\\left(")
       equation_end <- "\\right)"
     } else if (model_info$family == "logit") {
-      dep_var <- paste0("\\Pr(", dep_var, "=1) = \\Lambda\\left(")
+      if(split)
+        dep_var <- paste0("\\Pr(", dep_var, "=1) = \\Lambda&\\left(")
+      else
+        dep_var <- paste0("\\Pr(", dep_var, "=1) = \\Lambda\\left(")
       equation_end <- "\\right)"
     }
   } else {
@@ -397,7 +423,7 @@ regression_to_latex <- function(model,
   # Combine all parts
   if (!split) {
     full_latex <- paste0("$$\n",
-                         dep_var, ifelse(model_info$family=="linear","=",""),
+                         dep_var, ifelse(model_info$type=="linear","=",""),
                          paste(latex_parts, collapse = ""),
                          ffe_text,
                          equation_end,
@@ -406,15 +432,30 @@ regression_to_latex <- function(model,
                          "\n$$")
   } else {
     # Split the equation into multiple lines
-    lines <- c(paste0(dep_var, "&=", latex_parts[1]))
+    if(length(latex_parts)>1)
+      latex_parts[1] <- paste0(latex_parts[1], "\\right.")
+    if(model_info$type=="linear")
+      lines <- c(paste0(dep_var, "&=", latex_parts[1]))
+    else
+      lines <- c(paste0(dep_var, "", latex_parts[1]))
+
+    latex_parts[length(latex_parts)] <- paste0("\\left.", latex_parts[length(latex_parts)])
+
+    nchar_ <- nchar_coefs + 1 + nchar_var_names
+
     current_line <- lines[1]
+
+    nchar_current_line <- nchar_dep_var + nchar_coefs[1] + 2 + nchar_var_names[1]
+
     for (i in 2:length(latex_parts)) {
-      if (nchar(current_line) + nchar(latex_parts[i]) > split) {
-        lines <- c(lines, paste0("&\\phantom{=}", latex_parts[i]))
+      if (nchar_current_line + nchar_[i] > split) {
+        lines <- c(lines, paste0("&\\phantom{=+}", latex_parts[i]))
         current_line <- lines[length(lines)]
+        nchar_current_line = nchar_dep_var
       } else {
         lines[length(lines)] <- paste0(lines[length(lines)], latex_parts[i])
         current_line <- lines[length(lines)]
+        nchar_current_line = nchar_current_line + nchar_coefs[i] + 1 + nchar_var_names[i]
       }
     }
 
@@ -426,6 +467,7 @@ regression_to_latex <- function(model,
     aligned_equation <- paste(lines, collapse = " \\\\\n")
     full_latex <- paste0("$$\n\\begin{aligned}\n",
                          aligned_equation,
+                         "\\right)",
                          "\n\\end{aligned}\n$$")
   }
 
@@ -455,7 +497,9 @@ regression_to_latex <- function(model,
       unlist(first_stages)
     ), collapse = "\n\n")
   }
-  return(full_latex)
+  if(output_latex)
+    cat(full_latex)
+  return(invisible(full_latex))
 }
 
 recursive_formatting <- function(x, digits = options()$digits, scientific=FALSE) {
