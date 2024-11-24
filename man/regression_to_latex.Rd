@@ -13,7 +13,10 @@ regression_to_latex(
   split = FALSE,
   fe_notes = TRUE,
   show_first_stage = FALSE,
-  omit = NULL
+  omit = NULL,
+  output_latex = TRUE,
+  coef_name_sep = "\\\\,",
+  interaction_sep = "\\\\cdot"
 )
 }
 \arguments{
@@ -34,6 +37,12 @@ regression_to_latex(
 \item{show_first_stage}{Logical. For IV models, should first stage equations be displayed? Default is FALSE}
 
 \item{omit}{Character vector of regular expressions identifying coefficients to omit from the output. Default is NULL}
+
+\item{output_latex}{Logical. Should the latex equation be output}
+
+\item{coef_name_sep}{Character. The (latex) separation between the coefficient and its name. Default is "\\,"}
+
+\item{interaction_sep}{Character. The (latex) separation between interactions. Default is "\\cdot"}
 }
 \value{
 A character string containing the LaTeX equation representation of the model results.
