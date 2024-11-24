@@ -1,0 +1,12 @@
+^RegressionToLatex\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^README\.md$
+^\.github$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^\.github/workflows/R-CMD-check\.yaml$
+^\.github/workflows/pkgdown\.yaml$
+^cran-comments\.md$
+^CONTRIBUTING\.md$
